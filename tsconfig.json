@@ -1,0 +1,28 @@
+{
+    "compilerOptions": {
+        "target": "ES2021",
+        "lib": ["esnext", "es5", "es6", "es7", "ES2021"],
+        "skipLibCheck": true,
+        "esModuleInterop": true,
+        "strict": true,
+        "module": "esnext",
+        "resolveJsonModule": true,
+        "experimentalDecorators": true,
+        "allowJs": true,
+        "jsx": "react",
+        "moduleResolution": "node",
+        "rootDirs": ["src"],
+        "declaration": true,
+        "forceConsistentCasingInFileNames": true,
+        "noImplicitReturns": true,
+        "noImplicitThis": true,
+        "noImplicitAny": true,
+        "strictNullChecks": true,
+        "noUnusedLocals": false,
+        "allowSyntheticDefaultImports": true,
+        "emitDecoratorMetadata": true,
+        "isolatedModules": true
+    },
+    "include": ["src/**/*", "index.ts"],
+    "exclude": ["node_modules", "dist"]
+}
