@@ -4,6 +4,6 @@
  */
 
 export * from './src/types';
-export * from './src/consume';
+export * from './src/consumer';
 export * from './src/publisher';
 export * from './src/shared';
