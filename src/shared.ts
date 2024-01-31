@@ -82,7 +82,6 @@ export function asQueue(queue:RabbitMQQueueResource):MethodParams[Cmd.QueueDecla
     return {
         durable: queue.spec.durable,
         autoDelete: queue.spec.autoDelete,
-        passive: queue.spec.passive,
         queue: queueRequestName,
         exclusive: queue.spec.exclusive,
     };
