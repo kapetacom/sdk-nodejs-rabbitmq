@@ -74,13 +74,13 @@
         ]
     },
     "peerDependencies": {
-        "@kapeta/sdk-config": "^2"
+        "@kapeta/sdk-config": "^2.1"
     },
     "devDependencies": {
         "@kapeta/eslint-config": "^0.6.0",
         "@kapeta/prettier-config": "^0.6.1",
         "@kapeta/schemas": "^2.0.0",
-        "@kapeta/sdk-config": "^2",
+        "@kapeta/sdk-config": "^2.1",
         "@kapeta/ui-web-types": "^1.2.0",
         "@types/node": "^20.11.13",
         "eslint": "^8.42.0",
