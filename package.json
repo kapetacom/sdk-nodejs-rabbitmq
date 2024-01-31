@@ -1,6 +1,6 @@
 {
     "name": "@kapeta/sdk-rabbitmq",
-    "version": "0.0.1",
+    "version": "1.0.0",
     "description": "RabbitMQ client for Kapeta SDK",
     "type": "commonjs",
     "exports": {
