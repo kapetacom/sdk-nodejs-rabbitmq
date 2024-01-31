@@ -1,16 +1,21 @@
-import {Message, Options} from "amqplib";
 import {ConfigProvider} from "@kapeta/sdk-config";
 import {RabbitMQBlockDefinition, RabbitMQQueueResource} from "./types";
-import {connectToInstance} from "./shared";
+import {asExchange, asQueue, connectToInstance, exchangeEnsure, queueBindingEnsure, queueEnsure} from "./shared";
+import type {AsyncMessage, Cmd, Envelope, MethodParams} from "rabbitmq-client/lib/codec";
+import {Consumer, ConsumerStatus} from "rabbitmq-client/lib/Consumer";
 
-interface ConsumerOptions extends Omit<Options.Consume,'noAck'|'consumerTag'> {
-    preFetch?: number,
+export interface ConsumerOptions {
+    qos?: MethodParams[Cmd.BasicQos]
+    requeue?: boolean,
+    concurrency?: number,
 }
 
-export type Consumer<DataType = any> = (data: DataType, raw: Message) => void | Promise<void>;
+export type TypedAsyncMessage<DataType> = AsyncMessage & { body: DataType }
+export type MessageHandler<DataType = any> = (data:DataType, msg: TypedAsyncMessage<DataType>) => Promise<ConsumerStatus | void> | ConsumerStatus | void;
 
+export const DROP_MESSAGE = new Error('Drop message');
 
-export async function createConsumer<DataType = any>(config: ConfigProvider, resourceName:string, callback: Consumer<DataType>, opts?:ConsumerOptions) {
+export async function createConsumer<DataType = any>(config: ConfigProvider, resourceName: string, callback: MessageHandler<DataType>, opts?: ConsumerOptions): Promise<Consumer> {
     const instance = await config.getInstanceForConsumer(resourceName);
     if (!instance) {
         throw new Error(`Could not find instance for consumer ${resourceName}`);
@@ -23,16 +28,13 @@ export async function createConsumer<DataType = any>(config: ConfigProvider, res
         throw new Error('Invalid rabbitmq block definition. Missing consumers, providers and/or bindings');
     }
 
-    const prefix = `${instance.instanceId}`;
-    const channel = await connectToInstance(config, instance.instanceId)
-        .then((connection) => {
-            return connection.createChannel();
-        });
+    const connection = await connectToInstance(config, instance.instanceId);
 
     // Get the defined exchanges that this publisher should publish to
     const blockResources = instance.connections.map((connection) => {
-        return rabbitBlock.spec.providers?.find((consumer) => {
-            return consumer.metadata.name === connection.provider.resourceName;
+        return rabbitBlock.spec.providers?.find((provider) => {
+            return provider.metadata.name === connection.provider.resourceName &&
+                connection.consumer.resourceName === resourceName;
         });
     }).filter(Boolean) as RabbitMQQueueResource[];
 
@@ -45,94 +47,99 @@ export async function createConsumer<DataType = any>(config: ConfigProvider, res
     }
 
     const queue = blockResources[0];
-
-    const queueRequestName = queue.spec.exclusive ? '' : `${prefix}_${queue.metadata.name}`;
-    console.log(`Asserting queue ${queueRequestName || '<exclusive>'}`);
-    const assertedQueue = await channel.assertQueue(queueRequestName, {
-        durable: queue.spec.durable,
-        autoDelete: queue.spec.autoDelete,
-        expires: queue.spec.expires,
-        messageTtl: queue.spec.messageTtl,
-        exclusive: queue.spec.exclusive,
-        maxLength: queue.spec.maxLength,
-        maxPriority: queue.spec.maxPriority,
-        deadLetterRoutingKey: queue.spec.deadLetterRoutingKey,
-        deadLetterExchange: queue.spec.deadLetterExchange,
-        arguments: queue.spec.arguments,
-    });
-
-    const queueName = assertedQueue.queue;
+    const queueName = queue.metadata.name;
 
     // Bind exchanges to queue
+    const exchanges: MethodParams[Cmd.ExchangeDeclare][] = [];
+    const queueBindings: MethodParams[Cmd.QueueBind][] = [];
     for (const exchangeBindings of rabbitBlock.spec.bindings.exchanges) {
-        const exchangeName = `${prefix}_${exchangeBindings.exchange}`;
+
+        const exchange = rabbitBlock.spec.consumers
+            .find((consumer) => consumer.metadata.name === exchangeBindings.exchange);
+
+        if (!exchange) {
+            throw new Error(`Could not find exchange ${exchangeBindings.exchange}`);
+        }
+
+        const exchangeName = exchange.metadata.name;
+
+        exchanges.push(asExchange(exchange));
+
         if (!exchangeBindings.bindings?.length) {
             console.warn(`Not binding exchange ${exchangeName} to queues because there are no bindings`);
             continue;
         }
 
-        for (const queueBinding of exchangeBindings.bindings) {
-            if (queueBinding.queue !== queue.metadata.name) {
+        for (const bindings of exchangeBindings.bindings) {
+            if (bindings.type !== 'queue' ||
+                bindings.name !== queue.metadata.name) {
                 // Not for this queue
                 continue;
             }
 
-            if (typeof queueBinding.routing === 'string') {
-                console.log(`Binding exchange ${exchangeName} to queue ${queueName} with routing key ${queueBinding.routing}`);
-                await channel.bindQueue(queueName, exchangeName, queueBinding.routing);
+            if (typeof bindings.routing === 'string') {
+                console.log(`Binding exchange ${exchangeName} to queue ${queueName} with routing key ${bindings.routing}`);
+                queueBindings.push({
+                    exchange: exchangeName,
+                    queue: queueName,
+                    routingKey: bindings.routing,
+                })
             } else {
-                const headers = queueBinding.routing?.headers ?? {};
-                if (queueBinding.routing?.matchAll) {
+                const headers = bindings.routing?.headers ?? {};
+                if (bindings.routing?.matchAll) {
                     headers['x-match'] = 'all';
                 } else {
                     headers['x-match'] = 'any';
                 }
+                queueBindings.push({
+                    exchange: exchangeName,
+                    queue: queueName,
+                    routingKey: '',
+                    arguments: headers,
+                })
                 console.log(`Binding exchange ${exchangeName} to queue ${queueName} with headers`, headers);
-                await channel.bindQueue(queueName, exchangeName, '', headers);
             }
         }
     }
 
-    if (opts?.preFetch) {
-        await channel.prefetch(opts.preFetch);
-        delete opts.preFetch;
+    const queueOptions = asQueue(queue);
+
+    await queueEnsure(connection, queueOptions);
+
+    for(const exchange of exchanges) {
+        await exchangeEnsure(connection, exchange);
     }
 
-    try {
-        await channel.consume(queueName, async (msg) => {
-            if (!msg) {
-                return;
-            }
-
-            let data:DataType;
-            try {
-                const content = msg.content.toString('utf8');
-                data = JSON.parse(content);
-            } catch (e) {
-                console.error('Could not parse message', e);
-                channel.nack(msg, false, false);
-                return;
-            }
-
-            try {
-                await callback(data, msg);
-                channel.ack(msg);
-            } catch (e) {
-                console.error('Failed to handle message', e);
-                channel.nack(msg, false, true);
-            }
-        }, {
-            noAck: true,
-            consumerTag: `${config.getInstanceId()}_${resourceName}`,
-            ...opts,
-        });
-    } catch (e) {
-        channel.close().catch(() => {});
-        throw e;
+    for(const queueBinding of queueBindings) {
+        await queueBindingEnsure(connection, queueBinding);
     }
 
-    return async () => {
-        await channel.close();
-    };
-
+    return connection.createConsumer({
+        noAck: false, // We want to ack/nack manually
+        requeue: opts?.requeue ?? true,
+        concurrency: opts?.concurrency,
+        qos: opts?.qos,
+        consumerTag: `${config.getInstanceId()}_${resourceName}`,
+        queue: queueOptions.queue,
+        queueOptions,
+        queueBindings,
+        exchanges
+    }, async (msg) => {
+        try {
+            const result = await callback(msg.body, msg);
+            switch (result) {
+                case ConsumerStatus.REQUEUE:
+                case ConsumerStatus.ACK:
+                case ConsumerStatus.DROP:
+                    return result;
+            }
+            return ConsumerStatus.ACK;
+        } catch (e: any) {
+            if (e === DROP_MESSAGE) {
+                return ConsumerStatus.DROP;
+            }
+            console.error('Failed to handle message', e);
+            return ConsumerStatus.REQUEUE;
+        }
+    })
 }

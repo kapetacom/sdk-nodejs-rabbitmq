@@ -1,29 +1,59 @@
 import {ConfigProvider} from "@kapeta/sdk-config";
-import {ConfirmChannel, MessagePropertyHeaders, Options} from "amqplib";
 import {RabbitMQBlockDefinition, RabbitMQExchangeResource} from "./types";
-import {connectToInstance} from "./shared";
+import {
+    asExchange,
+    asQueue,
+    connectToInstance,
+    exchangeBindingEnsure,
+    exchangeEnsure,
+    queueBindingEnsure,
+    queueEnsure
+} from "./shared";
+import {Connection, Publisher as AMQPPublisher} from "rabbitmq-client";
+import {Cmd, Envelope, HeaderFields, MethodParams} from "rabbitmq-client/lib/codec";
 
 type TargetExchange = {
     exchange: string,
-    channel: ConfirmChannel
+    publisher: AMQPPublisher
 }
 
-export type PublisherOptions = Omit<Options.Publish, 'headers' | 'contentType'| 'appId'| 'contentEncoding'>
+export type PublishOptions = Omit<Envelope, 'headers' | 'contentType' | 'appId' | 'contentEncoding' | 'routingKey'>
 
-export interface PublishData<DataType = any, Headers = MessagePropertyHeaders> {
+export interface PublishData<DataType = any, Headers = {}, RoutingKey = string> {
     data: DataType
-    routingKey?: string
-    headers?: Headers
+    routingKey?: RoutingKey
+    headers?: HeaderFields['headers'] & Headers
 }
 
-export interface Publisher<DataType = any, Headers = MessagePropertyHeaders> {
-    publish(data: PublishData<DataType,Headers>, options?: PublisherOptions): Promise<void>;
+export interface Publisher<DataType = any, Headers = {}, RoutingKey = string> {
+    publish(data: PublishData<DataType, Headers, RoutingKey>, options?: PublishOptions): Promise<void>;
+
     close(): Promise<void>;
 }
 
-export async function createPublisher<DataType = any, Headers = MessagePropertyHeaders>(config: ConfigProvider, resourceName:string):Promise<Publisher<DataType, Headers>> {
-    const targetExchanges: TargetExchange[] = []
-    const channels: { [key: string]: ConfirmChannel } = {}
+
+export interface PublisherOptions {
+    /**
+     * Whether to use a confirm channel or not. Note that this will be slower
+     */
+    confirm?: boolean
+
+    /**
+     * The maximum number of attempts to publish a message.
+     */
+    maxAttempts?: number
+}
+
+
+/**
+ *
+ * @param config the configuration provider
+ * @param resourceName the name of the publisher resource
+ * @param publisherOptions options for the publisher
+ */
+export async function createPublisher<DataType = any, Headers = {}, RoutingKey = string>(config: ConfigProvider, resourceName: string, publisherOptions?: PublisherOptions): Promise<Publisher<DataType, Headers, RoutingKey>> {
+    const targets: TargetExchange[] = []
+    const connections: { [key: string]: Connection } = {}
     const instances = await config.getInstancesForProvider(resourceName);
     if (instances.length === 0) {
         throw new Error(`No instances found for provider ${resourceName}`);
@@ -38,74 +68,131 @@ export async function createPublisher<DataType = any, Headers = MessagePropertyH
             throw new Error('Invalid rabbitmq block definition. Missing consumers, providers and/or bindings');
         }
 
-        if (!channels[instance.instanceId]) {
-            channels[instance.instanceId] = await connectToInstance(config, instance.instanceId)
-                .then((connection) => {
-                    return connection.createConfirmChannel();
-                });
+        const consumers = rabbitBlock.spec.consumers;
+        const exchangeBindingDefinitions = rabbitBlock.spec.bindings.exchanges;
+
+        if (!connections[instance.instanceId]) {
+            connections[instance.instanceId] = await connectToInstance(config, instance.instanceId);
         }
 
-        const channel = channels[instance.instanceId];
-        const prefix = `${instance.instanceId}`;
+        const connection = connections[instance.instanceId];
+
+        const exchanges: Array<MethodParams[Cmd.ExchangeDeclare]> = [];
+        const exchangeBindings: Array<MethodParams[Cmd.ExchangeBind]> = [];
 
         // Get the defined exchanges that this publisher should publish to
-        const blockResources = instance.connections.map((connection) => {
+        const exchangeDefinitions = instance.connections.map((connection) => {
             return rabbitBlock.spec.consumers?.find((consumer) => {
-                return consumer.metadata.name === connection.consumer.resourceName
+                return consumer.metadata.name === connection.consumer.resourceName &&
+                    connection.provider.resourceName === resourceName;
             });
         }).filter(Boolean) as RabbitMQExchangeResource[];
 
         // Create defined exchanges. These are the ones that are defined in the block
-        for (const exchange of blockResources) {
-            const exchangeName = `${prefix}_${exchange.metadata.name}`;
-            console.log(`Asserting defined exchange ${exchangeName}`);
-            await channel.assertExchange(exchangeName, exchange.spec.exchangeType, {
-                durable: exchange.spec.durable,
-                autoDelete: exchange.spec.autoDelete,
-                alternateExchange: exchange.spec.alternateExchange,
-                internal: exchange.spec.internal,
-                arguments: exchange.spec.arguments,
-            });
+        for (const exchange of exchangeDefinitions) {
 
-            targetExchanges.push({
-                channel,
-                exchange: exchangeName
+            const exchangeName = exchange.metadata.name;
+            exchanges.push(asExchange(exchange));
+
+            for (const bindings of exchangeBindingDefinitions) {
+                if (!bindings.bindings ||
+                    bindings.exchange !== exchange.metadata.name) {
+                    continue;
+                }
+
+                for (const binding of bindings.bindings) {
+                    if (binding.type !== 'exchange') {
+                        // Not for this exchange
+                        continue;
+                    }
+
+                    const boundExchange = consumers.find(c => c.metadata.name === binding.name);
+                    if (!boundExchange) {
+                        throw new Error(`Could not find exchange ${binding.name}`);
+                    }
+                    const boundExchangeName = boundExchange.metadata.name;
+                    exchanges.push(asExchange(boundExchange));
+
+                    if (typeof binding.routing === 'string') {
+                        console.log(`Binding exchange ${exchangeName} to exchange ${boundExchangeName} with routing key ${binding.routing}`);
+                        exchangeBindings.push({
+                            routingKey: binding.routing,
+                            arguments: {},
+                            source: exchangeName,
+                            destination: boundExchangeName,
+                        });
+                    } else {
+                        const headers = binding.routing?.headers ?? {};
+                        if (binding.routing?.matchAll) {
+                            headers['x-match'] = 'all';
+                        } else {
+                            headers['x-match'] = 'any';
+                        }
+                        console.log(`Binding exchange ${exchangeName} to exchange ${boundExchangeName} with headers`, headers);
+                        exchangeBindings.push({
+                            routingKey: '',
+                            arguments: headers,
+                            source: exchangeName,
+                            destination: boundExchangeName,
+                        });
+                    }
+                }
+            }
+
+            for(const exchange of exchanges) {
+                await exchangeEnsure(connection, exchange);
+            }
+
+            for(const exchangeBinding of exchangeBindings) {
+                await exchangeBindingEnsure(connection, exchangeBinding);
+            }
+
+            targets.push({
+                exchange: exchangeName,
+                publisher: connection.createPublisher({
+                    confirm: publisherOptions?.confirm ?? false,
+                    maxAttempts: publisherOptions?.maxAttempts,
+                    exchanges,
+                    exchangeBindings
+                })
             });
         }
+
     }
+
 
     return {
 
-        async publish(data: PublishData<DataType,Headers>, options?: PublisherOptions) {
+        async publish(data: PublishData<DataType, Headers, RoutingKey>, options?: PublishOptions) {
             const content = Buffer.from(JSON.stringify(data.data));
             const promises: Promise<void>[] = []
+            const publishOptions: Envelope = {
+                ...options,
+                contentType: 'application/json',
+                contentEncoding: 'utf8',
+                appId: `${config.getInstanceId()}_${resourceName}`,
+                headers: data?.headers,
+                routingKey: (data?.routingKey ?? '').toString().toLowerCase()
+            };
+
             // Publish to all target exchanges. These might be defined spread across multiple servers
-            for (const target of targetExchanges) {
-                promises.push(new Promise<void>((resolve, reject) => {
-                    target.channel.publish(target.exchange, data?.routingKey ?? '', Buffer.from(content), {
-                        ...options,
-                        headers: data?.headers,
-                        contentType: 'application/json',
-                        contentEncoding: 'utf8',
-                        appId: `${config.getInstanceId()}_${resourceName}`,
-                    }, (err) => {
-                        if (err) {
-                            reject(err);
-                            return;
-                        }
-                        resolve();
-                    });
-                }));
+            for (const target of targets) {
+                console.log(`Publishing to exchange ${target.exchange} with routing key ${publishOptions.routingKey}`);
+
+                promises.push(target.publisher.send({
+                    ...publishOptions,
+                    exchange: target.exchange,
+                }, data.data));
             }
 
             await Promise.all(promises);
         },
         async close() {
-            for (const target of targetExchanges) {
+            for (const target of targets) {
                 try {
-                    await target.channel.close();
+                    await target.publisher.close();
                 } catch (e) {
-                    console.error('Failed to close channel', e);
+                    console.error('Failed to close publisher', e);
                 }
             }
         }

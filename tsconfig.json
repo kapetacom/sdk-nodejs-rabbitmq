@@ -1,7 +1,7 @@
 {
     "compilerOptions": {
         "target": "ES2021",
-        "lib": ["esnext", "es5", "es6", "es7", "ES2021"],
+        "lib": ["esnext", "es5", "es6", "es7", "ES2021", "dom"],
         "skipLibCheck": true,
         "esModuleInterop": true,
         "strict": true,

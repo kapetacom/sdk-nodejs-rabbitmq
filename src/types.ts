@@ -15,9 +15,24 @@ export interface RabbitMQBaseSpec {
 
 export interface RabbitMQSubscriberSpec extends RabbitMQBaseSpec {}
 
-export interface RabbitMQPublisherSpec extends RabbitMQBaseSpec {}
+export interface RabbitMQHeaderRoute {
+    name: string;
+    values: string[];
+}
+
+export interface RabbitMQPublisherSpec extends RabbitMQBaseSpec {
+    routeKeys?: {
+        text: string;
+        data: string[];
+    },
+    headers?: {
+        text: string;
+        data: RabbitMQHeaderRoute[];
+    }
+}
 
 export interface RabbitMQExchangeSpec extends RabbitMQBaseSpec {
+    passive?: boolean;
     exchangeType: 'direct' | 'fanout' | 'topic' | 'headers';
     alternateExchange?: string;
     internal?: boolean;
@@ -28,6 +43,7 @@ export interface RabbitMQExchangeSpec extends RabbitMQBaseSpec {
 }
 
 export interface RabbitMQQueueSpec extends RabbitMQBaseSpec {
+    passive?: boolean;
     arguments?: any;
     deadLetterExchange?: string;
     deadLetterRoutingKey?: string;
@@ -45,16 +61,17 @@ export interface HeaderBindings {
     headers: { [key: string]: string };
 }
 
-export type QueueRouting = string | HeaderBindings;
+export type ExchangeRouting = string | HeaderBindings;
 
-export interface QueueBindingSchema {
-    queue: string;
-    routing?: QueueRouting;
+export interface ExchangeBindingSchema {
+    name: string;
+    type: 'queue' | 'exchange'
+    routing?: ExchangeRouting;
 }
 
 export interface ExchangeBindingsSchema {
     exchange: string;
-    bindings?: QueueBindingSchema[];
+    bindings?: ExchangeBindingSchema[];
 }
 
 export interface RabbitMQBindingsSchema {

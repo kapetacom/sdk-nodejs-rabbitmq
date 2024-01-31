@@ -82,12 +82,12 @@
         "@kapeta/schemas": "^2.0.0",
         "@kapeta/sdk-config": "^2",
         "@kapeta/ui-web-types": "^1.2.0",
-        "@types/amqplib": "^0.10.4",
+        "@types/node": "^20.11.13",
         "eslint": "^8.42.0",
         "eslint-config-prettier": "^8.8.0",
         "prettier": "^2.8.8"
     },
     "dependencies": {
-        "amqplib": "^0.10.3"
+        "rabbitmq-client": "^4.5.0"
     }
 }
