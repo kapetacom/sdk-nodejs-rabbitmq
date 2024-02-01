@@ -1,3 +1,10 @@
+## [1.0.1](https://github.com/kapetacom/sdk-nodejs-rabbitmq/compare/v1.0.0...v1.0.1) (2024-02-01)
+
+
+### Bug Fixes
+
+* Retry vhost request ([#2](https://github.com/kapetacom/sdk-nodejs-rabbitmq/issues/2)) ([e4ca834](https://github.com/kapetacom/sdk-nodejs-rabbitmq/commit/e4ca834145146167a6d0e3e7ceec29b5d0a4676b))
+
 # 1.0.0 (2024-01-31)
 
 
