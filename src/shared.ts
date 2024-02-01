@@ -1,8 +1,29 @@
-import {AMQPError, Connection} from "rabbitmq-client"
+import {Cmd, MethodParams, ConnectionOptions, AMQPError, Connection} from "rabbitmq-client"
 import {ConfigProvider, InstanceOperator} from "@kapeta/sdk-config";
 import {OperatorOptions, RabbitMQExchangeResource, RabbitMQQueueResource} from "./types";
-import {ConnectionOptions} from "rabbitmq-client/lib/normalize";
-import {Cmd, MethodParams} from "rabbitmq-client/lib/codec";
+
+async function fetchRetry(input: RequestInfo | URL, init?: RequestInit & {maxRetries?: number, interval?:number}): Promise<Response> {
+    let attempts = 0;
+    const maxRetries = init?.maxRetries || 30;
+    const interval = init?.interval || 3000;
+    let lastError:Error|null = null;
+    while(attempts < maxRetries) {
+        attempts++;
+        try {
+            const response = await fetch(input, init);
+            if (response.ok) {
+                return response;
+            }
+
+            lastError = new Error(`Fetch failed: ${response.status} : ${response.statusText}`);
+        } catch (e:any) {
+            lastError = e;
+        }
+        console.warn(`Fetch to ${input} failed: ${lastError?.message ?? 'unknown'} - Retrying in ${interval}ms...`)
+        await new Promise((resolve) => setTimeout(resolve, interval));
+    }
+    throw lastError;
+}
 
 export async function createVHost(managementOperator:InstanceOperator, instanceId:string) {
 
@@ -24,7 +45,7 @@ export async function createVHost(managementOperator:InstanceOperator, instanceI
 
     console.log(`Ensuring RabbitMQ vhost: ${vhostName} @ ${managementOperator.hostname}:${port}`);
 
-    const response = await fetch(url, options);
+    const response = await fetchRetry(url, options);
     if (!response.ok) {
         throw new Error(`Failed to create vhost: ${response.status} : ${response.statusText}`);
     }
