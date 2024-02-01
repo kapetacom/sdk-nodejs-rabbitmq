@@ -5,7 +5,7 @@ import {OperatorOptions, RabbitMQExchangeResource, RabbitMQQueueResource} from "
 async function fetchRetry(input: RequestInfo | URL, init?: RequestInit & {maxRetries?: number, interval?:number}): Promise<Response> {
     let attempts = 0;
     const maxRetries = init?.maxRetries || 30;
-    const interval = init?.interval || 1000;
+    const interval = init?.interval || 3000;
     let lastError:Error|null = null;
     while(attempts < maxRetries) {
         attempts++;
@@ -14,10 +14,12 @@ async function fetchRetry(input: RequestInfo | URL, init?: RequestInit & {maxRet
             if (response.ok) {
                 return response;
             }
+
             lastError = new Error(`Fetch failed: ${response.status} : ${response.statusText}`);
         } catch (e:any) {
             lastError = e;
         }
+        console.warn(`Fetch to ${input} failed: ${lastError?.message ?? 'unknown'} - Retrying in ${interval}ms...`)
         await new Promise((resolve) => setTimeout(resolve, interval));
     }
     throw lastError;
