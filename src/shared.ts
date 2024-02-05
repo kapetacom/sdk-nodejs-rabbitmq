@@ -57,7 +57,7 @@ export async function connectToInstance(config:ConfigProvider, instanceId:string
     if (!operator) {
         throw new Error(`No operator found for instance ${instanceId}`);
     }
-    const vhost = await createVHost(operator, instanceId);
+    const vhost = await createVHost(operator, operator.options?.vhost ?? instanceId);
 
     const port = operator.ports['amqp']?.port || 5672;
 
