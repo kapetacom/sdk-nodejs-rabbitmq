@@ -1,3 +1,10 @@
+## [1.0.2](https://github.com/kapetacom/sdk-nodejs-rabbitmq/compare/v1.0.1...v1.0.2) (2024-02-05)
+
+
+### Bug Fixes
+
+* Use vhost from options if available ([#3](https://github.com/kapetacom/sdk-nodejs-rabbitmq/issues/3)) ([690e687](https://github.com/kapetacom/sdk-nodejs-rabbitmq/commit/690e687c2562b1c9ff2c6ae5712855010b65affc))
+
 ## [1.0.1](https://github.com/kapetacom/sdk-nodejs-rabbitmq/compare/v1.0.0...v1.0.1) (2024-02-01)
 
 
