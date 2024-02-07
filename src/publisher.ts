@@ -139,14 +139,6 @@ export async function createPublisher<DataType = any, Headers = {}, RoutingKey =
                 }
             }
 
-            for(const exchange of exchanges) {
-                await exchangeEnsure(connection, exchange);
-            }
-
-            for(const exchangeBinding of exchangeBindings) {
-                await exchangeBindingEnsure(connection, exchangeBinding);
-            }
-
             targets.push({
                 exchange: exchangeName,
                 publisher: connection.createPublisher({

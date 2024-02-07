@@ -47,7 +47,7 @@ export async function createConsumer<DataType = any>(config: ConfigProvider, res
     }
 
     const queue = blockResources[0];
-    const queueName = queue.metadata.name;
+    const queueOptions = asQueue(queue);
 
     // Bind exchanges to queue
     const exchanges: MethodParams[Cmd.ExchangeDeclare][] = [];
@@ -78,10 +78,10 @@ export async function createConsumer<DataType = any>(config: ConfigProvider, res
             }
 
             if (typeof bindings.routing === 'string') {
-                console.log(`Binding exchange ${exchangeName} to queue ${queueName} with routing key ${bindings.routing}`);
+                console.log(`Binding exchange ${exchangeName} to queue ${queueOptions.queue ?? '<exclusive>'} with routing key ${bindings.routing}`);
                 queueBindings.push({
                     exchange: exchangeName,
-                    queue: queueName,
+                    queue: queueOptions.queue,
                     routingKey: bindings.routing,
                 })
             } else {
@@ -93,25 +93,13 @@ export async function createConsumer<DataType = any>(config: ConfigProvider, res
                 }
                 queueBindings.push({
                     exchange: exchangeName,
-                    queue: queueName,
+                    queue: queueOptions.queue,
                     routingKey: '',
                     arguments: headers,
                 })
-                console.log(`Binding exchange ${exchangeName} to queue ${queueName} with headers`, headers);
+                console.log(`Binding exchange ${exchangeName} to queue ${queueOptions.queue ?? '<exclusive>'} with headers`, headers);
             }
         }
-    }
-
-    const queueOptions = asQueue(queue);
-
-    await queueEnsure(connection, queueOptions);
-
-    for(const exchange of exchanges) {
-        await exchangeEnsure(connection, exchange);
-    }
-
-    for(const queueBinding of queueBindings) {
-        await queueBindingEnsure(connection, queueBinding);
     }
 
     return connection.createConsumer({
@@ -126,6 +114,19 @@ export async function createConsumer<DataType = any>(config: ConfigProvider, res
         exchanges
     }, async (msg) => {
         try {
+            if (msg.contentEncoding && Buffer.isBuffer(msg.body)) {
+                const buf:Buffer = msg.body;
+                // For some reason the rabbitmq lib specifically doesn't parse the body if the contentEncoding is set
+                // so we do it here
+                if (msg.contentType === 'application/json') {
+                    msg.body = JSON.parse(buf.toString(msg.contentEncoding as BufferEncoding));
+                }
+
+                if (msg.contentType === 'text/plain') {
+                    msg.body = buf.toString(msg.contentEncoding as BufferEncoding);
+                }
+            }
+
             const result = await callback(msg.body, msg);
             switch (result) {
                 case ConsumerStatus.REQUEUE:
