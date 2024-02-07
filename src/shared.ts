@@ -98,7 +98,7 @@ export function asExchange(exchange:RabbitMQExchangeResource):MethodParams[Cmd.E
 }
 
 export function asQueue(queue:RabbitMQQueueResource):MethodParams[Cmd.QueueDeclare] {
-    const queueRequestName = queue.spec.exclusive ? '' : queue.metadata.name;
+    const queueRequestName = queue.spec.exclusive ? undefined : queue.metadata.name;
 
     return {
         durable: queue.spec.durable,
@@ -111,6 +111,7 @@ export function asQueue(queue:RabbitMQQueueResource):MethodParams[Cmd.QueueDecla
 
 export async function exchangeEnsure(connection:Connection, exchange: MethodParams[Cmd.ExchangeDeclare]) {
     try {
+        console.log('Ensuring exchange', exchange.exchange);
         await connection.exchangeDeclare(exchange)
     } catch (e:any) {
         const amqpError = e as AMQPError;
@@ -135,7 +136,9 @@ export async function exchangeBindingEnsure(connection:Connection, exchangeBindi
 
 export async function queueEnsure(connection:Connection, queue: MethodParams[Cmd.QueueDeclare]) {
     try {
-        await connection.queueDeclare(queue)
+        const result = await connection.queueDeclare(queue);
+        console.log('Ensured queue: "%s"', result?.queue);
+        return result?.queue;
     } catch (e:any) {
         const amqpError = e as AMQPError;
         if (amqpError.code === 'PRECONDITION_FAILED') {
@@ -148,11 +151,13 @@ export async function queueEnsure(connection:Connection, queue: MethodParams[Cmd
                     ifEmpty: true,
                     queue: queue.queue,
                 });
-                await connection.queueDeclare(queue);
+                const result = await connection.queueDeclare(queue);
+                console.log('Ensured queue: "%s"', result?.queue);
+                return result?.queue;
             } catch (e) {
                 console.warn(`Failed to recreate queue ${queue.queue}`, e);
+                throw e;
             }
-            return;
         }
         throw e;
     }
