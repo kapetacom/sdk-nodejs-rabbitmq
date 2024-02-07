@@ -1,3 +1,10 @@
+## [1.0.3](https://github.com/kapetacom/sdk-nodejs-rabbitmq/compare/v1.0.2...v1.0.3) (2024-02-07)
+
+
+### Bug Fixes
+
+* Let lib handle all declarations ([#4](https://github.com/kapetacom/sdk-nodejs-rabbitmq/issues/4)) ([e5a2619](https://github.com/kapetacom/sdk-nodejs-rabbitmq/commit/e5a261974b59abcbdd8445e6d0bc96af9209ae60))
+
 ## [1.0.2](https://github.com/kapetacom/sdk-nodejs-rabbitmq/compare/v1.0.1...v1.0.2) (2024-02-05)
 
 
