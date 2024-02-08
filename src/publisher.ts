@@ -65,7 +65,7 @@ export async function createPublisher<DataType = any, Headers = {}, RoutingKey =
         if (!rabbitBlock.spec.consumers?.length ||
             !rabbitBlock.spec.providers?.length ||
             !rabbitBlock.spec.bindings?.exchanges?.length) {
-            throw new Error('Invalid rabbitmq block definition. Missing consumers, providers and/or bindings');
+            throw new Error(`Invalid rabbitmq block definition. Missing consumers, providers and/or bindings for instance ${instance.instanceId} of provider ${resourceName}`);
         }
 
         const consumers = rabbitBlock.spec.consumers;

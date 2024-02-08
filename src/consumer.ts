@@ -25,7 +25,7 @@ export async function createConsumer<DataType = any>(config: ConfigProvider, res
     if (!rabbitBlock.spec.consumers?.length ||
         !rabbitBlock.spec.providers?.length ||
         !rabbitBlock.spec.bindings?.exchanges?.length) {
-        throw new Error('Invalid rabbitmq block definition. Missing consumers, providers and/or bindings');
+        throw new Error(`Invalid rabbitmq block definition. Missing consumers, providers and/or bindings for instance ${instance.instanceId} of consumer ${resourceName}`);
     }
 
     const connection = await connectToInstance(config, instance.instanceId);
