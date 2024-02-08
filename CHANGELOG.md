@@ -1,3 +1,10 @@
+## [1.0.4](https://github.com/kapetacom/sdk-nodejs-rabbitmq/compare/v1.0.3...v1.0.4) (2024-02-08)
+
+
+### Bug Fixes
+
+* Improve error message ([99e53e0](https://github.com/kapetacom/sdk-nodejs-rabbitmq/commit/99e53e05f405e3f64778e1c45614035a0e7850e2))
+
 ## [1.0.3](https://github.com/kapetacom/sdk-nodejs-rabbitmq/compare/v1.0.2...v1.0.3) (2024-02-07)
 
 
