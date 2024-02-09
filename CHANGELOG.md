@@ -1,3 +1,10 @@
+## [1.0.5](https://github.com/kapetacom/sdk-nodejs-rabbitmq/compare/v1.0.4...v1.0.5) (2024-02-09)
+
+
+### Bug Fixes
+
+* Check vhosts using a non-admin method before attempting to create ([#5](https://github.com/kapetacom/sdk-nodejs-rabbitmq/issues/5)) ([c2add34](https://github.com/kapetacom/sdk-nodejs-rabbitmq/commit/c2add3497a8e704172bba4c8e479739c141b4560))
+
 ## [1.0.4](https://github.com/kapetacom/sdk-nodejs-rabbitmq/compare/v1.0.3...v1.0.4) (2024-02-08)
 
 
