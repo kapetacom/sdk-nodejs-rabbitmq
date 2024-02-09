@@ -11,7 +11,8 @@ async function fetchRetry(input: RequestInfo | URL, init?: RequestInit & {maxRet
         attempts++;
         try {
             const response = await fetch(input, init);
-            if (response.ok) {
+            if (response.status && response.status < 500) {
+                // Only retry on server or network errors
                 return response;
             }
 
@@ -28,27 +29,47 @@ async function fetchRetry(input: RequestInfo | URL, init?: RequestInit & {maxRet
 export async function createVHost(managementOperator:InstanceOperator, instanceId:string) {
 
     const port = managementOperator.ports['management']?.port || 15672;
-    const rabbitMQServer = `http://${managementOperator.hostname}:${port}`; // Replace with your RabbitMQ server URL
+    const rabbitMQServer = `http://${managementOperator.hostname}:${port}/api`; // Replace with your RabbitMQ server URL
     const username = managementOperator.credentials?.username;
     const password = managementOperator.credentials?.password;
     const vhostName = instanceId;
 
-    const url = `${rabbitMQServer}/api/vhosts/${encodeURIComponent(vhostName)}`;
-
-    const options = {
-        method: 'PUT',
-        headers: {
-            'Authorization': 'Basic ' + Buffer.from(username + ':' + password).toString('base64'),
-            'Content-Type': 'application/json'
-        }
+    const headers = {
+        'Authorization': 'Basic ' + Buffer.from(username + ':' + password).toString('base64'),
+        'Content-Type': 'application/json'
     };
 
-    console.log(`Ensuring RabbitMQ vhost: ${vhostName} @ ${managementOperator.hostname}:${port}`);
+    console.log(`Checking RabbitMQ vhost: ${vhostName} @ ${rabbitMQServer}`);
 
-    const response = await fetchRetry(url, options);
-    if (!response.ok) {
-        throw new Error(`Failed to create vhost: ${response.status} : ${response.statusText}`);
+    // We ask for queues on the vhost since that does not require any special permissions.
+    // and will return 404 if the vhost does not exist.
+    // It will return 401 if the vhost exist, but we do not have access.
+    const queueListResponse = await fetchRetry(`${rabbitMQServer}/queues/${encodeURIComponent(vhostName)}`, {
+        method: 'GET',
+        headers,
+    });
+
+    if (queueListResponse.ok) {
+        console.log(`Found RabbitMQ vhost: ${vhostName} @ ${rabbitMQServer}`);
+        return vhostName;
     }
+
+    if (queueListResponse.status !== 404) {
+        // If we get here it likely means we do not have access to the vhost
+        // or we do not have access to the management API
+        throw new Error(`Failed to check for existing vhost: ${vhostName} @ ${rabbitMQServer}. Error: ${queueListResponse.status} : ${queueListResponse.statusText}`);
+    }
+
+    const createResponse = await fetchRetry(`${rabbitMQServer}/vhosts/${encodeURIComponent(vhostName)}`, {
+        method: 'PUT',
+        headers,
+    });
+
+    if (!createResponse.ok) {
+        throw new Error(`Failed to create vhost: ${vhostName} @ ${rabbitMQServer}. Error: ${createResponse.status} : ${createResponse.statusText}`);
+    }
+
+    console.log(`Created RabbitMQ vhost: ${vhostName} @ ${rabbitMQServer}`);
     return vhostName;
 }
 
