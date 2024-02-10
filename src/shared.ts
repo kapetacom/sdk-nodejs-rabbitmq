@@ -11,8 +11,8 @@ async function fetchRetry(input: RequestInfo | URL, init?: RequestInit & {maxRet
         attempts++;
         try {
             const response = await fetch(input, init);
-            if (response.status && response.status < 500) {
-                // Only retry on server or network errors
+            if (response.ok || response.status === 404) {
+                // Do not retry if ok or 404
                 return response;
             }
 
