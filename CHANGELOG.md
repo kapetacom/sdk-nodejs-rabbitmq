@@ -1,3 +1,10 @@
+## [1.0.6](https://github.com/kapetacom/sdk-nodejs-rabbitmq/compare/v1.0.5...v1.0.6) (2024-02-10)
+
+
+### Bug Fixes
+
+* Retry everything except ok or 404 ([#6](https://github.com/kapetacom/sdk-nodejs-rabbitmq/issues/6)) ([6b12bba](https://github.com/kapetacom/sdk-nodejs-rabbitmq/commit/6b12bbadfbf9bce8b1f36fecdf5ef4075d1bbf67))
+
 ## [1.0.5](https://github.com/kapetacom/sdk-nodejs-rabbitmq/compare/v1.0.4...v1.0.5) (2024-02-09)
 
 
